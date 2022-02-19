@@ -7,6 +7,9 @@ demo:
 httpbin-ingress:
 	./scripts/httpbin-ingress
 
+httpbin-tls:
+	./scripts/httpbin-tls
+
 down:
 	docker-compose down
 

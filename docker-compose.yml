@@ -52,5 +52,12 @@ services:
     volumes:
     - .:/host
 
+  openssl:
+    image: "alpine/openssl"
+    working_dir: /host
+    network_mode: host
+    volumes:
+    - .:/host
+
 volumes:
   k3s-server: {}

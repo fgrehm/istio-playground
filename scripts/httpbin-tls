@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 
+# Based on https://github.com/mrchrd/k3s-quickstart/blob/e664684a6857764138a245c55b17eb6b582b9929/run.sh
+
 set -eu -o pipefail
 
 export KUBECONFIG=`pwd`/kubeconfig.yaml
 ISTIOCTL='docker-compose run --rm istioctl'
+OPENSSL='docker-compose run --rm openssl'
 
 START_TIME=`date "+%s"`
 
@@ -16,6 +19,11 @@ until kubectl wait --for=condition=available deployment/metrics-server -n kube-s
 until kubectl wait --for=condition=available deployment/traefik -n kube-system; do sleep 1; done 2>/dev/null
 echo
 
+echo '### Setup cert-manager'
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.7.1/cert-manager.yaml
+until kubectl wait --for=condition=available deployment/cert-manager -n cert-manager; do sleep 1; done 2>/dev/null
+echo
+
 echo "### Setup Istio operator"
 ${ISTIOCTL} install --set profile=demo -y
 kubectl label namespace default istio-injection=enabled --overwrite
@@ -23,12 +31,44 @@ export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -
 export SECURE_INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}')
 export INGRESS_HOST="$(kubectl get po -l istio=ingressgateway -n istio-system -o jsonpath='{.items[0].status.hostIP}').nip.io"
 export GATEWAY_URL="${INGRESS_HOST}:${INGRESS_PORT}"
-echo "${GATEWAY_URL}"
+export SECURE_GATEWAY_URL="${INGRESS_HOST}:${SECURE_INGRESS_PORT}"
 echo
 
-echo "### Setup httpbin"
+echo "### Deploy httpbin"
 kubectl apply -n default -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/httpbin/httpbin.yaml
 until kubectl wait --for=condition=available deployment/httpbin -n default; do sleep 1; done 2>/dev/null
+
+echo "### Generate CA root certs for ${INGRESS_HOST}"
+${OPENSSL} req -x509 \
+               -sha256 \
+               -nodes \
+               -days 365 \
+               -newkey rsa:2048 \
+               -subj "/CN=${INGRESS_HOST}" \
+               -keyout "/host/${INGRESS_HOST}.key" \
+               -out "/host/${INGRESS_HOST}.crt"
+
+${OPENSSL} req -out "/host/httpbin.${INGRESS_HOST}.csr" \
+               -newkey rsa:2048 \
+               -nodes \
+               -keyout "/host/httpbin.${INGRESS_HOST}.key" \
+               -subj "/CN=httpbin.${INGRESS_HOST}"
+
+${OPENSSL} x509 -req \
+                -sha256 \
+                -days 365 \
+                -CA "/host/${INGRESS_HOST}.crt" \
+                -CAkey "/host/${INGRESS_HOST}.key" \
+                -set_serial 0 \
+                -in "/host/httpbin.${INGRESS_HOST}.csr" \
+                -out "/host/httpbin.${INGRESS_HOST}.crt"
+set -x
+sudo chown "${USER}:" *.nip.io.*
+set +x
+
+echo "### Configuring gateway"
+kubectl -n istio-system create secret tls httpbin-credential "--key=httpbin.${INGRESS_HOST}.key" "--cert=httpbin.${INGRESS_HOST}.crt"
+
 kubectl apply -f - <<EOF
 apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
@@ -39,9 +79,12 @@ spec:
     istio: ingressgateway # use Istio default gateway implementation
   servers:
   - port:
-      number: 80
-      name: http
-      protocol: HTTP
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: httpbin-credential # must be the same as secret
     hosts:
     - "httpbin.${INGRESS_HOST}"
 EOF
@@ -71,8 +114,11 @@ spec:
         host: httpbin
 EOF
 
-echo "### Testing httpbin"
-curl -L "http://httpbin.${GATEWAY_URL}/headers"
+echo "### Testing httpbin (https://${SECURE_GATEWAY_URL})"
+set -x
+curl -v --resolve "httpbin.${INGRESS_HOST}:${SECURE_INGRESS_PORT}:${INGRESS_HOST}" \
+        --cacert "${INGRESS_HOST}.crt" \
+        "https://httpbin.${INGRESS_HOST}:${SECURE_INGRESS_PORT}/headers"
 
 END_TIME=`date "+%s"`
 
