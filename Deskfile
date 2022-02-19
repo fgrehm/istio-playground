@@ -1,4 +1,5 @@
 alias dc='docker-compose'
 alias dce='docker-compose exec server'
+alias istioctl='docker-compose run --rm istioctl'
 
 export KUBECONFIG=`pwd`/kubeconfig.yaml

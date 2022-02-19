@@ -43,5 +43,14 @@ services:
     - K3S_URL=https://server:6443
     - K3S_TOKEN=very-secure-token
 
+  istioctl:
+    image: "istio/istioctl:1.13.0-distroless"
+    working_dir: /host
+    network_mode: host
+    environment:
+      KUBECONFIG: /host/kubeconfig.yaml
+    volumes:
+    - .:/host
+
 volumes:
   k3s-server: {}
