@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+set -eu -o pipefail
+
+source 00-common/shared.sh
+
+START_TIME=`date "+%s"`
+
+configure-cluster
+
+echo "### Deploy httpbin"
+kubectl create ns httpbin-ingress 2>/dev/null || echo "httpbin-ingress namespace already exists"
+kubectl label namespace httpbin-ingress istio-injection=enabled --overwrite
+kubectl apply -n httpbin-ingress -f 00-common/httpbin.yaml
+until kubectl wait --for=condition=available deployment/httpbin -n httpbin-ingress; do sleep 1; done 2>/dev/null
+istioctl analyze -n httpbin-ingress
+echo
+
+echo "### Configuring httpbin ingress"
+kubectl apply -n httpbin-ingress -f - <<EOF
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: httpbin-gateway
+spec:
+  selector:
+    istio: ingressgateway # use Istio default gateway implementation
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "httpbin.$(fetch-ingress-host)"
+EOF
+
+# Change the `match` config to allowlist only the necessary methods from httpbin
+# Full list at https://httpbin.org/
+kubectl apply -n httpbin-ingress -f - <<EOF
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: httpbin
+spec:
+  hosts:
+  - "httpbin.$(fetch-ingress-host)"
+  gateways:
+  - httpbin-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /status
+    - uri:
+        prefix: /delay
+    - uri:
+        prefix: /headers
+    route:
+    - destination:
+        port:
+          number: 8000
+        host: httpbin
+EOF
+echo
+
+echo "### Testing httpbin"
+curl -sSfLI "http://httpbin.$(fetch-ingress-host)/headers"
+
+END_TIME=`date "+%s"`
+
+echo "### Setup time: $((${END_TIME} - ${START_TIME}))s"

@@ -4,8 +4,8 @@ kiali:
 demo:
 	./01-demo/main
 
-httpbin-ingress:
-	./02-httpbin-ingress/main
+httpbin:
+	./02-httpbin/main
 
 httpbin-tls:
 	./03-httpbin-tls/main
@@ -17,4 +17,5 @@ down:
 	docker-compose down
 
 clobber:
+	rm -rf certs/
 	docker-compose down -v

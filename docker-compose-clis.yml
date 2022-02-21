@@ -23,6 +23,10 @@ services:
     image: "smallstep/step-cli:0.18.1"
     entrypoint: "step"
 
+  openssl:
+    <<: *cli
+    image: "alpine/openssl"
+
   kubectl:
     <<: *k8s-cli
     entrypoint: "kubectl"

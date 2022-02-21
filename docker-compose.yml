@@ -3,7 +3,7 @@ services:
 
   k3s-server-A:
     image: "rancher/k3s:v1.23.3-k3s1"
-    command: server
+    command: ["server", "--no-deploy", "traefik"]
     tmpfs:
     - /run
     - /var/run

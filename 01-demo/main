@@ -2,31 +2,11 @@
 
 set -eu -o pipefail
 
-dccr() { docker-compose -f docker-compose.yml -f docker-compose-clis.yml run --rm "${@}"; }
-kubectl() { dccr "kubectl" "${@}"; }
-istioctl() { dccr "istioctl" "${@}"; }
+source 00-common/shared.sh
 
 START_TIME=`date "+%s"`
 
-echo '### Setup k3s'
-docker-compose up -d --scale k3s-server-A=1 --scale k3s-agent-A=1
-sleep 5
-until kubectl wait --for=condition=ready node --all; do sleep 1; done 2>/dev/null
-until kubectl wait --for=condition=available deployment/coredns -n kube-system; do sleep 1; done 2>/dev/null
-until kubectl wait --for=condition=available deployment/metrics-server -n kube-system; do sleep 1; done 2>/dev/null
-until kubectl wait --for=condition=available deployment/traefik -n kube-system; do sleep 1; done 2>/dev/null
-echo
-
-echo "### Setup istio"
-kubectl apply -f 01-demo/istio.yaml
-kubectl wait --for=condition=complete job/helm-install-istio-base -n istio-system
-kubectl wait --for=condition=complete job/helm-install-istiod -n istio-system
-kubectl wait --for=condition=available deploy/istiod -n istio-system
-
-kubectl apply -f 01-demo/istio-gateway.yaml
-kubectl wait --for=condition=complete job/helm-install-istio-ingressgateway -n istio-system
-kubectl wait --for=condition=available deploy/istio-ingressgateway -n istio-system
-echo
+configure-cluster
 
 echo "### Setup sample app"
 kubectl apply -f 01-demo/sample-app.yaml
@@ -40,11 +20,8 @@ kubectl exec -n demo "${POD}" -c ratings -- curl -sSfLI productpage:9080/product
 echo
 
 echo "### Test external traffic routing"
-export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}' 2>/dev/null)
-export INGRESS_HOST="$(kubectl get po -l istio=ingressgateway -n istio-system -o jsonpath='{.items[0].status.hostIP}' 2>/dev/null).nip.io"
-export GATEWAY_URL="${INGRESS_HOST}:${INGRESS_PORT}"
-echo "${GATEWAY_URL}"
-curl -sSfLI "http://${GATEWAY_URL}/productpage"
+echo "url: $(fetch-gateway-url)"
+curl -sSfLI --connect-timeout 5 "$(fetch-gateway-url)/productpage"
 
 END_TIME=`date "+%s"`
 
