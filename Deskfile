@@ -1,5 +1,9 @@
-alias dc='docker-compose'
-alias dce='docker-compose exec server'
-alias istioctl='docker-compose run --rm istioctl'
-
 export KUBECONFIG=`pwd`/kubeconfig.yaml
+
+alias dc='docker-compose -f docker-compose.yml -f docker-compose-clis.yml'
+alias dccr='dc run --rm'
+alias istioctl='dccr istioctl'
+alias openssl='dccr openssl'
+alias stepcli='dccr ca-cli'
+alias helm='dccr helm'
+alias kubectl='dccr kubectl'

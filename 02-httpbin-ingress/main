@@ -2,8 +2,9 @@
 
 set -eu -o pipefail
 
-export KUBECONFIG=`pwd`/kubeconfig.yaml
-ISTIOCTL='docker-compose run --rm istioctl'
+dccr() { docker-compose -f docker-compose.yml -f docker-compose-clis.yml run --rm "${@}"; }
+kubectl() { dccr "kubectl" "${@}"; }
+istioctl() { dccr "istioctl" "${@}"; }
 
 START_TIME=`date "+%s"`
 
@@ -17,7 +18,7 @@ until kubectl wait --for=condition=available deployment/traefik -n kube-system; 
 echo
 
 echo "### Setup Istio operator"
-${ISTIOCTL} install --set profile=demo -y
+istioctl install --set profile=demo -y
 kubectl label namespace default istio-injection=enabled --overwrite
 export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}')
 export SECURE_INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}')

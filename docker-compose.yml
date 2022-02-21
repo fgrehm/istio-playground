@@ -1,7 +1,7 @@
 version: '3'
 services:
 
-  server:
+  k3s-server-A:
     image: "rancher/k3s:v1.23.3-k3s1"
     command: server
     tmpfs:
@@ -27,7 +27,7 @@ services:
     - 80:80      # Ingress controller port 80
     - 443:443    # Ingress controller port 443
 
-  agent:
+  k3s-agent-A:
     image: "rancher/k3s:v1.23.3-k3s1"
     tmpfs:
     - /run
@@ -40,24 +40,8 @@ services:
     privileged: true
     restart: always
     environment:
-    - K3S_URL=https://server:6443
+    - K3S_URL=https://k3s-server-A:6443
     - K3S_TOKEN=very-secure-token
-
-  istioctl:
-    image: "istio/istioctl:1.13.0-distroless"
-    working_dir: /host
-    network_mode: host
-    environment:
-      KUBECONFIG: /host/kubeconfig.yaml
-    volumes:
-    - .:/host
-
-  openssl:
-    image: "alpine/openssl"
-    working_dir: /host
-    network_mode: host
-    volumes:
-    - .:/host
 
 volumes:
   k3s-server: {}
