@@ -62,8 +62,14 @@ spec:
 EOF
 echo
 
-echo "### Testing httpbin"
-curl -sSfLI "http://httpbin.$(fetch-ingress-host)/headers"
+echo "### Testing external access to httpbin"
+curl -sSfL "http://httpbin.$(fetch-ingress-host)/headers" | tee /tmp/httpbin-headers.json
+if grep -q 'X-Forwarded-Client-Cert' /tmp/httpbin-headers.json; then
+  echo 'Auto mTLS working!'
+else
+  echo 'Auto mTLS is not working properly!'
+  exit 1
+fi
 
 END_TIME=`date "+%s"`
 

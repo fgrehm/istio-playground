@@ -15,12 +15,12 @@ configure-cluster() {
 
   echo "### Setup istio"
   kubectl apply -f 00-common/istio.yaml
-  kubectl wait --for=condition=complete job/helm-install-istio-base -n istio-system
-  kubectl wait --for=condition=complete job/helm-install-istiod -n istio-system
+  until kubectl wait --for=condition=complete job/helm-install-istio-base -n istio-system; do sleep 1; done 2>/dev/null
+  until kubectl wait --for=condition=complete job/helm-install-istiod -n istio-system; do sleep 1; done 2>/dev/null
   kubectl wait --for=condition=available deploy/istiod -n istio-system
 
   kubectl apply -f 00-common/istio-gateway.yaml
-  kubectl wait --for=condition=complete job/helm-install-istio-ingressgateway -n istio-system
+  until kubectl wait --for=condition=complete job/helm-install-istio-ingressgateway -n istio-system; do sleep 1; done 2>/dev/null
   kubectl wait --for=condition=available deploy/istio-ingressgateway -n istio-system
   kubectl apply -n istio-system -f - <<EOF
 apiVersion: security.istio.io/v1beta1
@@ -31,6 +31,10 @@ spec:
   mtls:
     mode: STRICT
 EOF
+  kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/addons/prometheus.yaml
+  kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/addons/jaeger.yaml
+  kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/addons/kiali.yaml
+  kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/addons/grafana.yaml
   echo
 }
 
