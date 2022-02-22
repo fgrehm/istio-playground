@@ -11,7 +11,7 @@ configure-cluster
 ingress_host="$(fetch-ingress-host)"
 ingress_port="$(fetch-ingress-port)"
 secure_ingress_port="$(fetch-secure-ingress-port)"
-httpbin_host="httpbin-tls.${ingress_host}"
+httpbin_host="www.httpbin-tls.${ingress_host}"
 
 echo "### Deploy httpbin"
 kubectl create ns httpbin-tls 2>/dev/null || echo "httpbin-tls namespace already exists"
