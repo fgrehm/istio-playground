@@ -22,6 +22,15 @@ configure-cluster() {
   kubectl apply -f 00-common/istio-gateway.yaml
   kubectl wait --for=condition=complete job/helm-install-istio-ingressgateway -n istio-system
   kubectl wait --for=condition=available deploy/istio-ingressgateway -n istio-system
+  kubectl apply -n istio-system -f - <<EOF
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: "default"
+spec:
+  mtls:
+    mode: STRICT
+EOF
   echo
 }
 
