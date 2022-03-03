@@ -1,5 +1,5 @@
 bootstrap::cluster() {
-  if [[ "${SKIP_BOOTSTRAP:-no}" != "no" ]]; then
+  if [[ "${SKIP_CLUSTER_BOOTSTRAP:-no}" != "no" ]]; then
     echo_title "Skipping cluster bootstrap"
     return
   fi
@@ -8,6 +8,13 @@ bootstrap::cluster() {
   bootstrap::configure-registry
   bootstrap::configure-cluster
   bootstrap::configure-istio
+}
+
+bootstrap::configure-public-ca() {
+  echo_title 'Configuring "public" CA'
+  mkdir -p ./tmp/public-ca
+  dc up -d public-ca tools 2>&1 | ensure_indent
+  until $(dc logs public-ca | grep -q 'Serving HTTPS'); do sleep 1; done | ensure_indent
 }
 
 bootstrap::configure-cluster() {

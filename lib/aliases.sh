@@ -10,6 +10,10 @@ openssl() {
   dc exec tools openssl "${@}"
 }
 
+public-ca::step() {
+  dc exec public-ca step  "${@}"
+}
+
 istioctl() {
   dc exec tools istioctl "${@}"
 }

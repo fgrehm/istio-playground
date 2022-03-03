@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+
+set -eu -o pipefail
+
+source lib/all.sh
+
+START_TIME=`date "+%s"`
+
+bootstrap::cluster
+bootstrap::configure-public-ca
+
+namespace="ig-public-ca"
+apps::deploy-httpbin "${namespace}"
+
+ns_tld="${namespace}.$(ingress::fetch-host)"
+wildcard_cert_name="wildcard.${ns_tld}"
+
+mkdir -p tmp/certs/
+
+
+if ! [[ -f "tmp/certs/${wildcard_cert_name}.key" ]]; then
+  echo_title "Generating certs for *.${ns_tld}"
+  public-ca::step ca certificate "*.${ns_tld}" "tmp/certs/${wildcard_cert_name}.crt" "tmp/certs/${wildcard_cert_name}.key" \
+                                 --provisioner-password-file=/host/tmp/public-ca/secrets/password \
+                                 --not-after "24h"
+
+  # NOTE: The TLS secret needs to be created in istio-system
+  kubectl -n istio-system create secret tls "${namespace}-wildcard-tls" \
+                                            "--key=/host/tmp/certs/${wildcard_cert_name}.key" \
+                                            "--cert=/host/tmp/certs/${wildcard_cert_name}.crt"
+fi
+
+echo_title "Configuring httpbin ingress"
+kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: ns-gateway
+spec:
+  selector:
+    istio: ingressgateway # use Istio default gateway implementation
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: ${namespace}-wildcard-tls # must be the same as secret
+    hosts:
+    - "*.${ns_tld}"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: headers
+spec:
+  hosts:
+  - "headers.${ns_tld}"
+  gateways:
+  - ns-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    rewrite:
+      uri: "/headers"
+    route:
+    - destination:
+        port:
+          number: 8000
+        host: httpbin
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: status
+spec:
+  hosts:
+  - "status.${ns_tld}"
+  gateways:
+  - ns-gateway
+  http:
+  - match:
+    - uri:
+        prefix: ""
+    rewrite:
+      uri: "/status"
+    route:
+    - destination:
+        port:
+          number: 8000
+        host: httpbin
+EOF
+
+url="https://headers.${ns_tld}:$(ingress::fetch-secure-port)"
+echo_title "Testing HTTPs ingress to ${url}"
+curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
+
+url="https://status.${ns_tld}:$(ingress::fetch-secure-port)/200"
+echo_title "Testing HTTPs ingress to ${url}"
+curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
+
+END_TIME=`date "+%s"`
+
+echo_title "Total time: $((${END_TIME} - ${START_TIME}))s"

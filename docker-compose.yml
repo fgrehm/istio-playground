@@ -43,7 +43,6 @@ services:
 
   agent:
     <<: *k3s
-    hostname: "agent"
     environment:
       <<: *registry-proxy-env
       K3S_URL: "https://server:6443"
@@ -58,6 +57,18 @@ services:
     - '/tmp/istio-playground/registry-proxy-cache:/docker_mirror_cache'
     environment:
       ENABLE_MANIFEST_CACHE: "true"
+
+  public-ca:
+    image: "smallstep/step-ca:0.18.1"
+    environment:
+      DOCKER_STEPCA_INIT_NAME: "Istio Playground Public CA"
+      DOCKER_STEPCA_INIT_DNS_NAMES: "localhost,public-ca,$$(hostname -f)"
+    working_dir: /host
+    volumes:
+    - .:/host
+    - ./tmp/public-ca:/home/step
+    ports:
+    - 9000:9000
 
   tools:
     build:
