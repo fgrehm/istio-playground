@@ -1,0 +1,14 @@
+FROM rancher/pause:3.6 AS pause
+FROM istio/istioctl:1.13.1-distroless AS istio
+FROM smallstep/step-cli:0.18.1 AS step-cli
+FROM alpine/openssl AS openssl
+
+FROM alpine/k8s:1.20.7
+COPY --from=pause /pause /usr/local/bin/pause
+COPY --from=openssl /usr/bin/openssl /usr/local/bin/openssl
+COPY --from=istio /usr/local/bin/istioctl /usr/local/bin/istioctl
+COPY --from=step-cli /usr/local/bin/step /usr/local/bin/step
+# RUN wget https://github.com/sbstp/kubie/releases/download/v0.16.0/kubie-linux-amd64 \
+#          -O /usr/local/bin/kubie \
+#     && chmod +x /usr/local/bin/kubie
+CMD /usr/local/bin/pause

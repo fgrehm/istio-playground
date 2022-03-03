@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+set -eu -o pipefail
+
+source lib/all.sh
+
+START_TIME=`date "+%s"`
+
+bootstrap::cluster
+
+namespace="mtls-sanity-check"
+apps::deploy-httpbin "${namespace}"
+
+echo_title "Configuring httpbin virtual service"
+kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: httpbin
+spec:
+  hosts:
+  - "httpbin"
+  gateways:
+  - httpbin-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /status
+    - uri:
+        prefix: /delay
+    - uri:
+        prefix: /headers
+    route:
+    - destination:
+        port:
+          number: 8000
+        host: httpbin
+EOF
+
+# Based on https://istio.io/latest/docs/tasks/security/authentication/authn-policy/#auto-mutual-tls
+echo_title "Testing mTLS"
+
+kubectl run -i --rm \
+            --image alpine/curl \
+            -n "${namespace}" \
+            testing -- \
+              sh -c 'sleep 5; until curl -isSfL http://httpbin:8000/headers; do sleep 2; done' \
+  | tee /tmp/istio-playground-httpbin-headers
+
+if ! grep -q 'server: envoy' /tmp/istio-playground-httpbin-headers; then
+  fail 'Request was not processed by an envoy proxy'
+fi
+
+if grep -q 'X-Forwarded-Client-Cert' /tmp/istio-playground-httpbin-headers; then
+  echo_normal 'mTLS working!'
+else
+  fail 'mTLS is not working properly!'
+fi
+
+END_TIME=`date "+%s"`
+
+echo_title "Total time: $((${END_TIME} - ${START_TIME}))s"

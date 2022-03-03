@@ -1,9 +1,8 @@
 version: '3'
-services:
 
-  k3s-server-A:
+x-common:
+  k3s: &k3s
     image: "rancher/k3s:v1.23.3-k3s1"
-    command: ["server", "--no-deploy", "traefik"]
     tmpfs:
     - /run
     - /var/run
@@ -12,36 +11,65 @@ services:
       nofile:
         soft: 65535
         hard: 65535
+    depends_on:
+    - 'registry-proxy'
+    links:
+    - 'registry-proxy:registry-proxy'
     privileged: true
     restart: always
+  registry-proxy-env: &registry-proxy-env
+    HTTP_PROXY: "registry-proxy:3128"
+    HTTPS_PROXY: "registry-proxy:3128"
+    NOPROXY_LIST: "localhost,127.0.0.1,0.0.0.0,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.local,.svc"
+  registry-proxy-ca-vol: &registry-proxy-ca-vol |
+    /tmp/istio-playground/registry-proxy-ca/ca.crt:/etc/ssl/certs/registry-proxy-ca.pem
+
+services:
+  server:
+    <<: *k3s
+    command: ["server", "--disable", "traefik"]
     environment:
-    - K3S_TOKEN=very-secure-token
-    - K3S_KUBECONFIG_OUTPUT=/output/kubeconfig.yaml
-    - K3S_KUBECONFIG_MODE=666
+      <<: *registry-proxy-env
+      K3S_TOKEN: &k3s-token very-secure-token
+      K3S_KUBECONFIG_OUTPUT: /output/kubeconfig.yaml
+      K3S_KUBECONFIG_MODE: 666
     volumes:
+    - *registry-proxy-ca-vol
     - k3s-server:/var/lib/rancher/k3s
     # This is just so that we get the kubeconfig file out
-    - .:/output
+    - ./tmp:/output
     ports:
-    - 6443:6443  # Kubernetes API Server
-    - 80:80      # Ingress controller port 80
-    - 443:443    # Ingress controller port 443
+    - 6443:6443 # API Server
 
-  k3s-agent-A:
-    image: "rancher/k3s:v1.23.3-k3s1"
-    tmpfs:
-    - /run
-    - /var/run
-    ulimits:
-      nproc: 65535
-      nofile:
-        soft: 65535
-        hard: 65535
-    privileged: true
-    restart: always
+  agent:
+    <<: *k3s
+    hostname: "agent"
     environment:
-    - K3S_URL=https://k3s-server-A:6443
-    - K3S_TOKEN=very-secure-token
+      <<: *registry-proxy-env
+      K3S_URL: "https://server:6443"
+      K3S_TOKEN: *k3s-token
+    volumes:
+    - *registry-proxy-ca-vol
+
+  registry-proxy:
+    image: "rpardini/docker-registry-proxy:0.6.4"
+    volumes:
+    - '/tmp/istio-playground/registry-proxy-ca:/ca'
+    - '/tmp/istio-playground/registry-proxy-cache:/docker_mirror_cache'
+    environment:
+      ENABLE_MANIFEST_CACHE: "true"
+
+  tools:
+    build:
+      dockerfile: "Dockerfile.tools"
+      context: "."
+    network_mode: host
+    tty: true
+    environment:
+      KUBECONFIG: /host/tmp/kubeconfig.yaml
+    working_dir: /host
+    volumes:
+    - .:/host
 
 volumes:
   k3s-server: {}

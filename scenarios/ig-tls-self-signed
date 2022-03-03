@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+
+set -eu -o pipefail
+
+source lib/all.sh
+
+START_TIME=`date "+%s"`
+
+bootstrap::cluster
+
+namespace="ig-tls-self-signed"
+apps::deploy-httpbin "${namespace}"
+
+ns_tld="${namespace}.$(ingress::fetch-host)"
+wildcard_cert_name="wildcard.${ns_tld}"
+
+mkdir -p tmp/certs/
+
+if ! [[ -f "tmp/certs/${ns_tld}.key" ]]; then
+  echo_title "Generating self signed CA certs for ${ns_tld}"
+  openssl req -x509 \
+              -sha256 \
+              -nodes \
+              -days 365 \
+              -newkey rsa:2048 \
+              -subj "/CN=${ns_tld}" \
+              -keyout "/host/tmp/certs/${ns_tld}.key" \
+              -out "/host/tmp/certs/${ns_tld}.crt"
+fi
+
+if ! [[ -f "tmp/certs/${wildcard_cert_name}.key" ]]; then
+  echo_title "Generating self signed certs for *.${ns_tld}"
+
+  openssl req -out "/host/tmp/certs/${wildcard_cert_name}.csr" \
+              -newkey rsa:2048 \
+              -nodes \
+              -keyout "/host/tmp/certs/${wildcard_cert_name}.key" \
+              -subj "/CN=*.${ns_tld}"
+
+  openssl x509 -req \
+               -sha256 \
+               -days 365 \
+               -CA "/host/tmp/certs/${ns_tld}.crt" \
+               -CAkey "/host/tmp/certs/${ns_tld}.key" \
+               -set_serial 0 \
+               -in "/host/tmp/certs/${wildcard_cert_name}.csr" \
+               -out "/host/tmp/certs/${wildcard_cert_name}.crt"
+
+  # NOTE: The TLS secret needs to be created in istio-system
+  kubectl -n istio-system create secret tls wildcard-tls \
+                                            "--key=/host/tmp/certs/${wildcard_cert_name}.key" \
+                                            "--cert=/host/tmp/certs/${wildcard_cert_name}.crt"
+fi
+
+echo_title "Configuring httpbin ingress"
+kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: ns-gateway
+spec:
+  selector:
+    istio: ingressgateway # use Istio default gateway implementation
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: wildcard-tls # must be the same as secret
+    hosts:
+    - "*.${ns_tld}"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: headers
+spec:
+  hosts:
+  - "headers.${ns_tld}"
+  gateways:
+  - ns-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    rewrite:
+      uri: "/headers"
+    route:
+    - destination:
+        port:
+          number: 8000
+        host: httpbin
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: status
+spec:
+  hosts:
+  - "status.${ns_tld}"
+  gateways:
+  - ns-gateway
+  http:
+  - match:
+    - uri:
+        prefix: ""
+    rewrite:
+      uri: "/status"
+    route:
+    - destination:
+        port:
+          number: 8000
+        host: httpbin
+EOF
+
+url="https://headers.${ns_tld}:$(ingress::fetch-secure-port)"
+echo_title "Testing HTTPs ingress to ${url}"
+curl -isSfL --cacert "tmp/certs/${ns_tld}.crt" "${url}"
+
+url="https://status.${ns_tld}:$(ingress::fetch-secure-port)/200"
+echo_title "Testing HTTPs ingress to ${url}"
+curl -isSfL --cacert "tmp/certs/${ns_tld}.crt" "${url}"
+
+END_TIME=`date "+%s"`
+
+echo_title "Total time: $((${END_TIME} - ${START_TIME}))s"
