@@ -41,6 +41,14 @@ spec:
     istio: ingressgateway # use Istio default gateway implementation
   servers:
   - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*.${ns_tld}"
+    tls:
+      httpsRedirect: true
+  - port:
       number: 443
       name: https
       protocol: HTTPS
@@ -100,6 +108,17 @@ curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
 url="https://status.${ns_tld}:$(ingress::fetch-secure-port)/200"
 echo_title "Testing HTTPS ingress to ${url}"
 curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
+
+url="http://headers.${ns_tld}"
+echo_title "Testing HTTP -> HTTPS redirects from ${url}"
+curl -isSf --cacert "tmp/public-ca/certs/root_ca.crt" "${url}" 2>&1 \
+  | tee /tmp/istio-playground-tls-http-redirect
+if ! grep -q '301 Moved' /tmp/istio-playground-tls-http-redirect; then
+  fail "NO REDIRECT"
+fi
+if ! grep -q "location: https://headers.${ns_tld}" /tmp/istio-playground-tls-http-redirect; then
+  fail "WRONG REDIRECT"
+fi
 
 END_TIME=`date "+%s"`
 

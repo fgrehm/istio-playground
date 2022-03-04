@@ -14,7 +14,6 @@ bootstrap::configure-public-ca() {
   echo_title 'Configuring "public" CA'
   mkdir -p ./tmp/public-ca
   dc up -d public-ca tools 2>&1 | ensure_indent
-  until $(dc logs public-ca | grep -q 'Serving HTTPS'); do sleep 1; done | ensure_indent
 }
 
 bootstrap::configure-cluster() {
@@ -37,6 +36,7 @@ bootstrap::configure-istio() {
   kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/addons/jaeger.yaml | ensure_indent
   kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/addons/kiali.yaml | ensure_indent
   kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.13/samples/addons/grafana.yaml | ensure_indent
+  istio::label-ns "default"
   echo
 }
 
