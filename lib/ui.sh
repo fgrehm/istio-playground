@@ -30,18 +30,3 @@ fail() {
   echo_normal "$@" >&2
   exit 1
 }
-
-istio::create-ns() {
-  ns="${1}"
-  if ! kubectl get ns -o name | grep -q "namespace/${ns}"; then
-    kubectl create ns "${ns}" | ensure_indent
-  fi
-  kubectl label namespace "${ns}" istio-injection=enabled --overwrite &>/dev/null
-}
-
-kctl::wait() {
-  sleep_s="${1}"
-  shift
-
-  until kubectl wait "${@}"; do sleep "${sleep_s}"; done | ensure_indent
-}

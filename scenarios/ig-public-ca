@@ -94,11 +94,11 @@ spec:
 EOF
 
 url="https://headers.${ns_tld}:$(ingress::fetch-secure-port)"
-echo_title "Testing HTTPs ingress to ${url}"
+echo_title "Testing HTTPS ingress to ${url}"
 curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
 
 url="https://status.${ns_tld}:$(ingress::fetch-secure-port)/200"
-echo_title "Testing HTTPs ingress to ${url}"
+echo_title "Testing HTTPS ingress to ${url}"
 curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
 
 END_TIME=`date "+%s"`
