@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: http-echo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: http-echo
+  labels:
+    app: http-echo
+    service: http-echo
+spec:
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 80
+  selector:
+    app: http-echo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: http-echo
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: http-echo
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: http-echo
+        version: v1
+    spec:
+      serviceAccountName: http-echo
+      containers:
+      - image: hashicorp/http-echo:alpine
+        imagePullPolicy: IfNotPresent
+        name: http-echo
+        command: ["sh", "-c"]
+        args: ['/http-echo -listen=:80 -text="${NODE_NAME}://$(hostname)"']
+        ports:
+        - containerPort: 80
+        env:
+        - name: "NODE_NAME"
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
