@@ -27,6 +27,7 @@ x-common:
 services:
   server:
     <<: *k3s
+    hostname: "server"
     command: ["server", "--disable", "traefik"]
     environment:
       <<: *registry-proxy-env
@@ -43,6 +44,7 @@ services:
 
   agent:
     <<: *k3s
+    hostname: "agent"
     environment:
       <<: *registry-proxy-env
       K3S_URL: "https://server:6443"
@@ -69,6 +71,17 @@ services:
     - ./tmp/public-ca:/home/step
     ports:
     - 9000:9000
+
+  public-lb:
+    image: nginx:1.21-alpine
+    ports:
+    - 8080:80
+    - 8443:443
+    volumes:
+    - ./lib/nginx/00-default-cfg.sh:/docker-entrypoint.d/00-default-cfg.sh
+    - ./lib/nginx/50-auto-reload.sh:/docker-entrypoint.d/50-auto-reload.sh
+    - ./tmp/public-lb/nginx-conf.d:/etc/nginx/conf.d
+    - .:/host
 
   tools:
     build:

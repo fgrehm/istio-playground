@@ -1,6 +1,6 @@
-kctl::wait() {
+k8s::wait() {
   sleep_s="${1}"
   shift
 
-  until kubectl wait "${@}"; do sleep "${sleep_s}"; done | ensure_indent
+  until tools::kubectl wait "${@}"; do sleep "${sleep_s}"; done | ensure_indent
 }

@@ -18,42 +18,42 @@ mkdir -p tmp/certs/
 
 if ! [[ -f "tmp/certs/${ns_tld}.key" ]]; then
   echo_title "Generating self signed CA certs for ${ns_tld}"
-  openssl req -x509 \
-              -sha256 \
-              -nodes \
-              -days 365 \
-              -newkey rsa:2048 \
-              -subj "/CN=${ns_tld}" \
-              -keyout "/host/tmp/certs/${ns_tld}.key" \
-              -out "/host/tmp/certs/${ns_tld}.crt"
+  tools::openssl req -x509 \
+                     -sha256 \
+                     -nodes \
+                     -days 365 \
+                     -newkey rsa:2048 \
+                     -subj "/CN=${ns_tld}" \
+                     -keyout "/host/tmp/certs/${ns_tld}.key" \
+                     -out "/host/tmp/certs/${ns_tld}.crt"
 fi
 
 if ! [[ -f "tmp/certs/${wildcard_cert_name}.key" ]]; then
   echo_title "Generating self signed certs for *.${ns_tld}"
 
-  openssl req -out "/host/tmp/certs/${wildcard_cert_name}.csr" \
-              -newkey rsa:2048 \
-              -nodes \
-              -keyout "/host/tmp/certs/${wildcard_cert_name}.key" \
-              -subj "/CN=*.${ns_tld}"
+  tools::openssl req -out "/host/tmp/certs/${wildcard_cert_name}.csr" \
+                     -newkey rsa:2048 \
+                     -nodes \
+                     -keyout "/host/tmp/certs/${wildcard_cert_name}.key" \
+                     -subj "/CN=*.${ns_tld}"
 
-  openssl x509 -req \
-               -sha256 \
-               -days 365 \
-               -CA "/host/tmp/certs/${ns_tld}.crt" \
-               -CAkey "/host/tmp/certs/${ns_tld}.key" \
-               -set_serial 0 \
-               -in "/host/tmp/certs/${wildcard_cert_name}.csr" \
-               -out "/host/tmp/certs/${wildcard_cert_name}.crt"
+  tools::openssl x509 -req \
+                      -sha256 \
+                      -days 365 \
+                      -CA "/host/tmp/certs/${ns_tld}.crt" \
+                      -CAkey "/host/tmp/certs/${ns_tld}.key" \
+                      -set_serial 0 \
+                      -in "/host/tmp/certs/${wildcard_cert_name}.csr" \
+                      -out "/host/tmp/certs/${wildcard_cert_name}.crt"
 
   # NOTE: The TLS secret needs to be created in istio-system
-  kubectl -n istio-system create secret tls wildcard-tls \
-                                            "--key=/host/tmp/certs/${wildcard_cert_name}.key" \
-                                            "--cert=/host/tmp/certs/${wildcard_cert_name}.crt"
+  tools::kubectl -n istio-system create secret tls wildcard-tls \
+                                               "--key=/host/tmp/certs/${wildcard_cert_name}.key" \
+                                               "--cert=/host/tmp/certs/${wildcard_cert_name}.crt"
 fi
 
 echo_title "Configuring httpbin ingress"
-kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
+tools::kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
 apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
 metadata:

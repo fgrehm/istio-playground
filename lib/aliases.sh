@@ -3,17 +3,13 @@ dc() {
 }
 
 kubectl() {
-  docker exec -i istio-playground_tools_1 kubectl "${@}"
+  dc exec -T tools kubectl "${@}"
 }
 
 openssl() {
-  dc exec tools openssl "${@}"
-}
-
-public-ca::step() {
-  dc exec public-ca step  "${@}"
+  dc exec -T tools openssl "${@}"
 }
 
 istioctl() {
-  dc exec tools istioctl "${@}"
+  dc exec -T tools istioctl "${@}"
 }

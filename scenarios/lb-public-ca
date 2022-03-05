@@ -7,21 +7,24 @@ source lib/all.sh
 START_TIME=`date "+%s"`
 
 bootstrap::public-ca
+bootstrap::public-lb
 bootstrap::cluster
 
-namespace="ig-public-ca"
+namespace="lb-public-ca"
 apps::deploy-httpbin "${namespace}"
 
-ns_tld="${namespace}.$(ingress::fetch-host)"
+lb_ip=$(docker inspect $(docker-compose ps | grep 'public-lb' | awk '{print $1}') \
+                       --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+
+ns_tld="${namespace}.${lb_ip}.nip.io"
 wildcard_cert_name="wildcard.${ns_tld}"
 
-mkdir -p tmp/certs/
-
+mkdir -p tmp/certs
 if ! [[ -f "tmp/certs/${wildcard_cert_name}.key" ]]; then
   echo_title "Generating certs for *.${ns_tld}"
   exec::public-ca step ca certificate "*.${ns_tld}" "tmp/certs/${wildcard_cert_name}.crt" "tmp/certs/${wildcard_cert_name}.key" \
-                                      --provisioner-password-file=/host/tmp/public-ca/secrets/password \
-                                      --not-after "24h"
+                                 --provisioner-password-file=/host/tmp/public-ca/secrets/password \
+                                 --not-after "24h"
 
   # NOTE: The TLS secret needs to be created in istio-system
   tools::kubectl -n istio-system create secret tls "${namespace}-wildcard-tls" \
@@ -29,7 +32,67 @@ if ! [[ -f "tmp/certs/${wildcard_cert_name}.key" ]]; then
                                                    "--cert=/host/tmp/certs/${wildcard_cert_name}.crt"
 fi
 
-echo_title "Configuring httpbin ingress"
+echo_title "Configuring LB for *.${ns_tld} hosts"
+
+ig_ips=$(tools::kubectl -n istio-system \
+                         -o jsonpath='{.status.loadBalancer.ingress}' \
+                         get svc/istio-ingressgateway \
+          | tools::jq -cr '.[].ip')
+
+echo_normal "Ingress Gateway IPs:"
+lb_upstream=""
+secure_lb_upstream=""
+for ip in ${ig_ips[@]}; do
+  echo_normal "  * ${ip}"
+  lb_upstream+="\n  server ${ip};"
+  secure_lb_upstream+="\n  server ${ip}:443;"
+done
+
+cat <<-STR > "tmp/public-lb/nginx-conf.d/${ns_tld}.conf"
+upstream k3s {$(echo -e "${lb_upstream}")
+}
+
+upstream k3s-secure {$(echo -e "${secure_lb_upstream}")
+}
+
+server {
+  listen 80;
+  server_name *.${ns_tld};
+  location / {
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Playground-Public-LB "1";
+    # proxy_set_header X-Real-IP \$remote_addr;
+    # proxy_set_header X-Forwarded-Proto \$scheme;
+    # proxy_set_header X-Forwarded-Port 80;
+    # proxy_set_header Upgrade \$http_upgrade;
+    # proxy_set_header Connection "upgrade";
+
+    proxy_http_version 1.1;
+    proxy_pass http://k3s;
+    # proxy_pass_request_headers on;
+  }
+}
+
+server {
+  listen 443 ssl;
+  server_name *.${ns_tld};
+  ssl_certificate /host/tmp/certs/${wildcard_cert_name}.crt;
+  ssl_certificate_key /host/tmp/certs/${wildcard_cert_name}.key;
+  location / {
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Playground-Public-LB-SSL "1";
+    proxy_ssl_name \$host;
+    proxy_ssl_server_name on;
+
+    proxy_http_version 1.1;
+    proxy_pass https://k3s-secure;
+  }
+}
+STR
+
+echo_title "Configuring Gateway and services"
 tools::kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
 apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
@@ -65,18 +128,19 @@ spec:
   hosts:
   - "headers.${ns_tld}"
   gateways:
+  - mesh
   - ns-gateway
   http:
   - match:
     - uri:
-        prefix: /
+        prefix: "/"
     rewrite:
       uri: "/headers"
     route:
     - destination:
         port:
           number: 8000
-        host: httpbin
+        host: httpbin.${namespace}.svc.cluster.local
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
@@ -86,6 +150,7 @@ spec:
   hosts:
   - "status.${ns_tld}"
   gateways:
+  - mesh
   - ns-gateway
   http:
   - match:
@@ -97,8 +162,9 @@ spec:
     - destination:
         port:
           number: 8000
-        host: httpbin
+        host: httpbin.${namespace}.svc.cluster.local
 EOF
+tools::istioctl analyze -n "${namespace}" 2>&1 | ensure_indent
 
 url="https://headers.${ns_tld}:$(ingress::fetch-secure-port)"
 echo_title "Testing HTTPS ingress to ${url}"
@@ -107,6 +173,7 @@ curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
 url="https://status.${ns_tld}:$(ingress::fetch-secure-port)/200"
 echo_title "Testing HTTPS ingress to ${url}"
 curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
+
 
 url="http://headers.${ns_tld}"
 echo_title "Testing HTTP -> HTTPS redirects from ${url}"

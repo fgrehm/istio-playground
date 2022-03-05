@@ -15,7 +15,7 @@ ns_tld="${namespace}.$(ingress::fetch-host)"
 host="httpbin.${ns_tld}"
 
 echo_title "Configuring httpbin ingress"
-kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
+tools::kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
 apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
 metadata:

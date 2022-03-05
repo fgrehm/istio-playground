@@ -12,7 +12,7 @@ namespace="mtls-sanity-check"
 apps::deploy-httpbin "${namespace}"
 
 echo_title "Configuring httpbin virtual service"
-kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
+tools::kubectl apply -n "${namespace}" -f - <<EOF | ensure_indent
 apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
@@ -40,11 +40,11 @@ EOF
 # Based on https://istio.io/latest/docs/tasks/security/authentication/authn-policy/#auto-mutual-tls
 echo_title "Testing mTLS"
 
-kubectl run -i --rm \
-            --image alpine/curl \
-            -n "${namespace}" \
-            testing -- \
-              sh -c 'sleep 5; until curl -isSfL http://httpbin:8000/headers; do sleep 2; done' \
+tools::kubectl run -i --rm \
+                   --image alpine/curl \
+                   -n "${namespace}" \
+                   testing -- \
+                     sh -c 'sleep 5; until curl -isSfL http://httpbin:8000/headers; do sleep 2; done' \
   | tee /tmp/istio-playground-httpbin-headers
 
 if ! grep -q 'server: envoy' /tmp/istio-playground-httpbin-headers; then
