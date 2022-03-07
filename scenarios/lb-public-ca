@@ -141,39 +141,6 @@ spec:
         port:
           number: 8000
         host: httpbin.${namespace}.svc.cluster.local
-  # - match:
-  #   - uri:
-  #       prefix: "/"
-  #   - port: 443
-  #   rewrite:
-  #     uri: "/headers"
-  #   route:
-  #   - destination:
-  #       host: istio-ingressgateway.istio-system.svc.cluster.local
-  #       port:
-  #         number: 443
-  # tls:
-  # - match:
-  #   - port: 443
-  #     sniHosts:
-  #     - "headers.${ns_tld}"
-  #   route:
-  #   - destination:
-  #       port:
-  #         number: 443
-  #       host: istio-ingressgateway.istio-system.svc.cluster.local
-# ---
-# apiVersion: networking.istio.io/v1beta1
-# kind: DestinationRule
-# metadata:
-#   name: headers-tls
-#   namespace: lb-public-ca
-# spec:
-#   host: headers.lb-public-ca.192.168.128.3.nip.io
-#   trafficPolicy:
-#     tls:
-#       mode: ISTIO_MUTUAL
-#       sni: headers.lb-public-ca.192.168.128.3.nip.io
 EOF
 tools::istioctl analyze -n "${namespace}" 2>&1 | ensure_indent
 
@@ -181,17 +148,16 @@ url="https://headers.${ns_tld}:$(ingress::fetch-secure-port)"
 echo_title "Testing HTTPS ingress to ${url}"
 curl -isSfL --cacert "tmp/public-ca/certs/root_ca.crt" "${url}"
 
-# TODO: Reenable later
-# url="http://headers.${ns_tld}"
-# echo_title "Testing HTTP -> HTTPS redirects from ${url}"
-# curl -isSf --cacert "tmp/public-ca/certs/root_ca.crt" "${url}" 2>&1 \
-#   | tee /tmp/istio-playground-tls-http-redirect
-# if ! grep -q '301 Moved' /tmp/istio-playground-tls-http-redirect; then
-#   fail "NO REDIRECT"
-# fi
-# if ! grep -q "location: https://headers.${ns_tld}" /tmp/istio-playground-tls-http-redirect; then
-#   fail "WRONG REDIRECT"
-# fi
+url="http://headers.${ns_tld}"
+echo_title "Testing HTTP -> HTTPS redirects from ${url}"
+curl -isSf --cacert "tmp/public-ca/certs/root_ca.crt" "${url}" 2>&1 \
+  | tee /tmp/istio-playground-tls-http-redirect
+if ! grep -q '301 Moved' /tmp/istio-playground-tls-http-redirect; then
+  fail "NO REDIRECT"
+fi
+if ! grep -q "location: https://headers.${ns_tld}" /tmp/istio-playground-tls-http-redirect; then
+  fail "WRONG REDIRECT"
+fi
 
 END_TIME=`date "+%s"`
 
