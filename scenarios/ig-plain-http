@@ -54,6 +54,7 @@ spec:
           number: 8000
         host: httpbin
 EOF
+tools::istioctl analyze -n "${namespace}" 2>&1 | ensure_indent
 
 url="http://${host}:$(ingress::fetch-port)/status/200"
 echo_title "Testing plain HTTP ingress to ${url}"

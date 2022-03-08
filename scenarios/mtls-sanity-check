@@ -36,6 +36,7 @@ spec:
           number: 8000
         host: httpbin
 EOF
+tools::istioctl analyze -n "${namespace}" 2>&1 | ensure_indent
 
 # Based on https://istio.io/latest/docs/tasks/security/authentication/authn-policy/#auto-mutual-tls
 echo_title "Testing mTLS"

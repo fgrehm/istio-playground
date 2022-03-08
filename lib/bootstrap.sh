@@ -29,6 +29,7 @@ bootstrap::cluster() {
 
   bootstrap::configure-registry
 
+  mkdir -p ./tmp
   echo_title "Configuring k3s cluster"
   dc up -d server agent tools 2>&1 | ensure_indent
   k8s::wait 1 --for=condition=ready node -l "node-role.kubernetes.io/master=true"
@@ -37,7 +38,12 @@ bootstrap::cluster() {
   k8s::wait 1 --for=condition=available deployment/metrics-server -n kube-system
 
   echo_title "Configuring istio"
-  tools::istioctl install -y --set values.global.proxy.logLevel=debug \
+  if ! tools::kubectl get ns/istio-ingress &>/dev/null; then
+    tools::kubectl create namespace istio-ingress | ensure_indent
+  fi
+  tools::istioctl install -y \
+                          -f manifests/istio-operator.yaml \
+                          --set values.global.proxy.logLevel=debug \
                           --set meshConfig.accessLogFile=/dev/stdout \
                           2>&1 \
     | ensure_indent

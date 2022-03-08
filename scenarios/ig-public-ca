@@ -24,7 +24,7 @@ if ! [[ -f "tmp/certs/${wildcard_cert_name}.key" ]]; then
                                       --not-after "24h"
 
   # NOTE: The TLS secret needs to be created in istio-system
-  tools::kubectl -n istio-system create secret tls "${namespace}-wildcard-tls" \
+  tools::kubectl -n istio-ingress create secret tls "${namespace}-wildcard-tls" \
                                                    "--key=/host/tmp/certs/${wildcard_cert_name}.key" \
                                                    "--cert=/host/tmp/certs/${wildcard_cert_name}.crt"
 fi
@@ -99,6 +99,7 @@ spec:
           number: 8000
         host: httpbin
 EOF
+tools::istioctl analyze -n "${namespace}" 2>&1 | ensure_indent
 
 url="https://headers.${ns_tld}:$(ingress::fetch-secure-port)"
 echo_title "Testing HTTPS ingress to ${url}"
