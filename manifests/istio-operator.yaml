@@ -11,14 +11,6 @@ spec:
       enabled: true
       label:
         istio: ingressgateway
-    - name: istio-internalgateway
-      namespace: istio-ingress
-      enabled: true
-      label:
-        istio: internalgateway
-      k8s:
-        service:
-          type: "ClusterIP"
   values:
     gateways:
       istio-ingressgateway:
